@@ -1,0 +1,20 @@
+V need to remove bit 7 (alg deg 5)
+
+V make a new dataset with SA that will be with margins of 0.05 errors both side (+-)
+
+V make a new dataset of margins instead of thresholds
+
+V train different networks on different metrics - result: failed.
+
+100 epochs conf table
+        TP     TN     FP     FN
+Bit
+0     5680  18034  20948   2564
+1    11418  13503  13453   8852
+2    21288   6599   8346  10993
+3    27379   2146   2298  15403
+4      330  13815  33081      0
+5    15092  10325  21809      0
+6    33724  13021    479      2
+7    44286      0      0   2940
+8     7747  17412   8556  13511
