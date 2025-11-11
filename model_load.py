@@ -8,7 +8,7 @@ import importlib
 import inspect
 import pandas as pd
 from get_NN_dataset import CustomDataset, generate_dataset
-from testtttttttt import BinaryCNN
+from main_script import BinaryCNN
 SUPPORTED_EXTS = [".pt", ".pth"]
 
 def find_model_file(name, search_dir="."):
