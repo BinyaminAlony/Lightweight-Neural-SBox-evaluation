@@ -3,7 +3,7 @@ import glob
 from random import sample, shuffle
 import torch
 from tqdm import tqdm
-from testtttttttt import BinaryCNN
+from main_script import BinaryCNN
 from utils.binary_utils import dec_to_bin_vec
 SUPPORTED_EXTS = [".pt", ".pth"]
 from torch.utils.data import DataLoader, TensorDataset

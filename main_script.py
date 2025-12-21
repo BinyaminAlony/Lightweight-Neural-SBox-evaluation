@@ -11,8 +11,16 @@ import matplotlib.pyplot as plt
 
 # TYPE = "CNN"
 TYPE = "MLP"
+
+LOSS_TYPE = "BalancedAccuracyLoss"  # Options: "BinaryLogisticLoss", "BalancedAccuracyLoss", "FbStyleLoss"
+
 BIT_0_COEFF = 1.5
 TN_FN_COEFF = 1.2
+
+BA_ALPHA = 0.5
+
+FB_BETA = 1.0
+FB_BETA_SQUARED = FB_BETA * FB_BETA
 
 WD = False
 # ---------- Data ----------
@@ -155,7 +163,71 @@ if __name__ == "__main__":
             per_el = torch.cat((loss_bit_0, loss_others), dim=1)  # -> [batch, bits]
             return per_el.mean()
 
-    loss_fn = BinaryLogisticLoss()  # bit 0 worth 4x others
+    class BalancedAccuracyLoss(torch.nn.Module):
+        """
+        loss is 1-balanced accuracy for bit 0, and standard logistic loss for other bits
+        """
+        def __init__(self):
+            super().__init__()
+            # create weights tensor once and register as buffer so it moves with the module
+            w = torch.ones(bits, dtype=torch.float32)
+
+        def forward(self, logits, targets):
+
+            # Calculate TP, FP, TN, FN for balanced accuracy
+            TP = (logits[:, 0] > 0) & (targets[:, 0] > 0)
+            TN = (logits[:, 0] <= 0) & (targets[:, 0] <= 0)
+            FP = (logits[:, 0] > 0) & (targets[:, 0] <= 0)
+            FN = (logits[:, 0] <= 0) & (targets[:, 0] > 0)
+
+            Recall = TP.sum().float() / (TP.sum() + FN.sum()).float()
+            specificity = TN.sum().float() / (TN.sum() + FP.sum()).float()
+            balanced_acc = BA_ALPHA * Recall + (1-BA_ALPHA) * specificity
+
+            loss_bit_0 = torch.sigmoid(BIT_0_COEFF * (1-balanced_acc)).unsqueeze(1)  # -> [batch, 1]
+            loss_others = torch.sigmoid(-logits[:, 1:] * targets[:, 1:])  # -> [batch, bits-1]
+            per_el = torch.cat((loss_bit_0, loss_others), dim=1)  # -> [batch, bits]
+            return per_el.mean()
+        
+    class FbStyleLoss(torch.nn.Module):
+        """Per-element softplus logistic loss with per-bit weights.
+
+        This is implemented in a vectorized manner: per-element loss = softplus(-logit * target),
+        then each column (bit) is multiplied by its per-bit weight and averaged.
+        Bit 0 is given a higher weight (4x by default).
+        """
+        def __init__(self):
+            super().__init__()
+            # create weights tensor once and register as buffer so it moves with the module
+            w = torch.ones(bits, dtype=torch.float32)
+
+        def forward(self, logits, targets):
+
+            # Calculate TP, FP, TN, FN for balanced accuracy
+            TP = (logits[:, 0] > 0) & (targets[:, 0] > 0)
+            TN = (logits[:, 0] <= 0) & (targets[:, 0] <= 0)
+            FP = (logits[:, 0] > 0) & (targets[:, 0] <= 0)
+            FN = (logits[:, 0] <= 0) & (targets[:, 0] > 0)
+
+            Recall = TP.sum().float() / (TP.sum() + FN.sum()).float()
+            specificity = TN.sum().float() / (TN.sum() + FP.sum()).float()
+            ## REMEMBER TO SET UP FB_BETA_SQUARED!!!!!!!
+            fb_style = (1+FB_BETA_SQUARED)*(specificity*Recall) / ( (FB_BETA_SQUARED*specificity) + Recall + 1e-8)
+    
+            loss_bit_0 = torch.sigmoid(BIT_0_COEFF * (1-fb_style)).unsqueeze(1)  # -> [batch, 1]
+            loss_others = torch.sigmoid(-logits[:, 1:] * targets[:, 1:])  # -> [batch, bits-1]
+            per_el = torch.cat((loss_bit_0, loss_others), dim=1)  # -> [batch, bits]
+            return per_el.mean()
+            
+    if LOSS_TYPE == "BinaryLogisticLoss":
+        loss_fn = BinaryLogisticLoss()
+    elif LOSS_TYPE == "BalancedAccuracyLoss":
+        loss_fn = BalancedAccuracyLoss()
+    elif LOSS_TYPE == "FbStyleLoss":
+        loss_fn = FbStyleLoss()
+    else:
+        raise ValueError(f"Unknown loss type: {LOSS_TYPE}")
+
     optimizer = optim.Adam(model.parameters(), lr=1e-3,weight_decay=1e-5 if WD == True else 0)
     device    = next(model.parameters()).device
     # Move loss_fn buffers to the same device as model parameters to avoid per-call copies
@@ -173,16 +245,18 @@ if __name__ == "__main__":
             total += y.numel()
         return correct / total
 
-    epochs = 50
-    reps = 20
-    TNs = []
+    epochs = 20
+    reps = 5
+    Speceficities = []
     Recalls = []
 
-    for gamma in [0.5,1.5]:
-        TN_FN_COEFF = gamma
-        TN_total = 0
+    alpha_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875]
+    
+    for alpha in alpha_range:
+        BA_ALPHA = alpha
+        Speceficity_total = 0
         recall_total = 0
-        for _ in tqdm(range(reps), desc=f"Repetitions for gamma={gamma}"):
+        for _ in tqdm(range(reps), desc=f"Repetitions for alpha={alpha}"):
             for epoch in range(1, epochs + 1):
                 error_distribution = torch.tensor([0]*bits)
                 model.train()
@@ -232,13 +306,14 @@ if __name__ == "__main__":
             FP = confusion[bit, 2]
             FN = confusion[bit, 3]
             Total = confusion[bit].sum()
-            TN_percent = 100 * TN / Total if Total > 0 else 0.0
+            
+            Speceficity = TN / (TN + FP) if (TN + FP) > 0 else 0.0
+            Speceficity_total += Speceficity
 
             recall = TP / (TP + FN) if (TP + FN) > 0 else 0.0
-            TN_total += TN_percent
             recall_total += recall
 
-        TNs.append(TN_total/reps)
+        Speceficities.append(Speceficity_total/reps)
         Recalls.append(recall_total/reps)
 
     # Save trained model using the requested naming convention
@@ -259,23 +334,23 @@ if __name__ == "__main__":
     # print(f"Saved full model to: {model_full_path}")
 
     # prepare x axis (try to reconstruct gamma values, otherwise use indices)
-    if len(TNs) > 0:
+    if len(alpha_range) > 0:
         try:
-            x = np.array([1.1 + i * 0.1 for i in range(len(TNs))])
-            xlabel = "gamma"
+            x = np.array(alpha_range)
+            xlabel = "alpha"
         except Exception:
-            x = np.arange(len(TNs))
+            x = np.array(alpha_range)
             xlabel = "index"
     else:
-        x = np.arange(len(TNs))
+        x = np.array(alpha_range)
         xlabel = "index"
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
-    ax1.plot(x, TNs, marker="o", linestyle="-")
-    ax1.set_title("True Negative % (bit 0)")
+    ax1.plot(x, Speceficities, marker="o", linestyle="-")
+    ax1.set_title("Speceficity (bit 0)")
     ax1.set_xlabel(xlabel)
-    ax1.set_ylabel("TN (%)")
+    ax1.set_ylabel("Speceficity")
     ax1.grid(True)
 
     ax2.plot(x, Recalls, marker="o", color="C1", linestyle="-")
