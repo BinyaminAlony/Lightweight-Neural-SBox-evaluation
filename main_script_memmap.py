@@ -322,7 +322,7 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # 1.  Load dataset
     # ------------------------------------------------------------------
-    print(f"Loading memmap dataset…")
+    print("Loading memmap dataset…")
     print(f"  Inputs : {FILE_INPUTS}")
     print(f"  Targets: {FILE_TARGETS}")
 

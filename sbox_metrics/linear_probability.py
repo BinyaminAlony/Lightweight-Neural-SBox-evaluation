@@ -1,6 +1,5 @@
-from functools import reduce
-
-from tqdm import tqdm
+# from functools import reduce
+# from tqdm import tqdm
 # import SBox_maps
 
 

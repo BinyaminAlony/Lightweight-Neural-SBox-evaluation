@@ -1,7 +1,7 @@
 import os
 import math
 import torch
-from torch.utils import data
+# from torch.utils import data
 from torch.utils.data import Dataset
 
 from sbox_metrics.linear_probability import linear_probability
