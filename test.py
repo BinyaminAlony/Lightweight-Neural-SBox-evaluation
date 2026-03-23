@@ -1,26 +1,15 @@
-# import numpy as np
-# import sympy as sp
+import csv
+import os
 
-# # test.pl - prints table of ((-t[:,0] * l[:,0]) * (TN_FN_COEFF - l[:,0])) for t,l in {-1,1}
+recalls = [0.85, 0.87, 0.90]
+specificities = [0.80, 0.82, 0.85]
+alpha_range = [0.1, 0.2, 0.3]
 
-# TN_FN_COEFF = 1.1
-# t_vals = [1,-1]
-# l_vals = [1,-1]
-
-# for gamma in np.arange(0.1, 2.1, 0.1):
-#     expr = lambda t, l: sp.simplify(-t * l * abs(gamma - l))
-#     print(f"g={gamma:.1f}", end="\t")
-#     for t in t_vals:
-#         print(f"t={t}", end="\t")
-#     print()
-#     for l in l_vals:
-#         print(f"l={l}", end="\t")
-#         for t in t_vals:
-#             print(f"{expr(t, l):.1f}", end="\t")
-#         print()
-#     print()
-
-import torch
-print(torch.__version__)
-print(torch.version.cuda)
-print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No GPU")
+os.makedirs("results", exist_ok=True)
+results_file = os.path.join("results", "alpha_metrics.csv")
+with open(results_file, "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["alpha", "specificity", "recall"])
+    for a, s, r in zip(alpha_range, specificities, recalls):
+        writer.writerow([a, float(s), float(r)])
+print(f"Saved results to: {results_file}")

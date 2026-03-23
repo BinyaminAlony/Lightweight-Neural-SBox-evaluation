@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 # TYPE = "CNN"
 TYPE = "MLP"
 
-LOSS_TYPE = "BalancedAccuracyLoss"  # Options: "BinaryLogisticLoss", "BalancedAccuracyLoss", "FbStyleLoss"
+LOSS_TYPE = "FbStyleLoss"  # Options: "BinaryLogisticLoss", "BalancedAccuracyLoss", "FbStyleLoss"
 
 BIT_0_COEFF = 1.5
 TN_FN_COEFF = 1.2
@@ -175,16 +175,18 @@ if __name__ == "__main__":
         def forward(self, logits, targets):
 
             # Calculate TP, FP, TN, FN for balanced accuracy
-            TP = (logits[:, 0] > 0) & (targets[:, 0] > 0)
-            TN = (logits[:, 0] <= 0) & (targets[:, 0] <= 0)
-            FP = (logits[:, 0] > 0) & (targets[:, 0] <= 0)
-            FN = (logits[:, 0] <= 0) & (targets[:, 0] > 0)
+            TP = ((logits[:, 0] > 0) & (targets[:, 0] > 0)).float()
+            TN = ((logits[:, 0] <= 0) & (targets[:, 0] <= 0)).float()
+            FP = ((logits[:, 0] > 0) & (targets[:, 0] <= 0)).float()
+            FN = ((logits[:, 0] <= 0) & (targets[:, 0] > 0)).float()
 
-            Recall = TP.sum().float() / (TP.sum() + FN.sum()).float()
-            specificity = TN.sum().float() / (TN.sum() + FP.sum()).float()
+            denom_Recall = TP + FN
+            Recall = torch.where(denom_Recall == 0, torch.zeros_like(TP), TP / denom_Recall)
+            denom_Specificity = TN + FP
+            specificity = torch.where(denom_Specificity == 0, torch.zeros_like(TN), TN / denom_Specificity)
             balanced_acc = BA_ALPHA * Recall + (1-BA_ALPHA) * specificity
 
-            loss_bit_0 = torch.sigmoid(BIT_0_COEFF * (1-balanced_acc)).unsqueeze(1)  # -> [batch, 1]
+            loss_bit_0 = (BIT_0_COEFF*(1-balanced_acc)).unsqueeze(1)
             loss_others = torch.sigmoid(-logits[:, 1:] * targets[:, 1:])  # -> [batch, bits-1]
             per_el = torch.cat((loss_bit_0, loss_others), dim=1)  # -> [batch, bits]
             return per_el.mean()
@@ -209,12 +211,14 @@ if __name__ == "__main__":
             FP = (logits[:, 0] > 0) & (targets[:, 0] <= 0)
             FN = (logits[:, 0] <= 0) & (targets[:, 0] > 0)
 
-            Recall = TP.sum().float() / (TP.sum() + FN.sum()).float()
-            specificity = TN.sum().float() / (TN.sum() + FP.sum()).float()
+            denom_Recall = TP + FN
+            Recall = torch.where(denom_Recall == 0, torch.zeros_like(TP), TP / denom_Recall)
+            denom_Specificity = TN + FP
+            specificity = torch.where(denom_Specificity == 0, torch.zeros_like(TN), TN / denom_Specificity)
             ## REMEMBER TO SET UP FB_BETA_SQUARED!!!!!!!
             fb_style = (1+FB_BETA_SQUARED)*(specificity*Recall) / ( (FB_BETA_SQUARED*specificity) + Recall + 1e-8)
     
-            loss_bit_0 = torch.sigmoid(BIT_0_COEFF * (1-fb_style)).unsqueeze(1)  # -> [batch, 1]
+            loss_bit_0 = (BIT_0_COEFF * (1-fb_style)).unsqueeze(1)
             loss_others = torch.sigmoid(-logits[:, 1:] * targets[:, 1:])  # -> [batch, bits-1]
             per_el = torch.cat((loss_bit_0, loss_others), dim=1)  # -> [batch, bits]
             return per_el.mean()
@@ -245,18 +249,34 @@ if __name__ == "__main__":
             total += y.numel()
         return correct / total
 
-    epochs = 20
-    reps = 5
+    epochs = 250
+    reps = 25
     Speceficities = []
     Recalls = []
 
-    alpha_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875]
+    FB_range_before_logscale = [-3, -2, -1, 0, 1, 2, 3]
+    FB_range = [2**i for i in FB_range_before_logscale]
     
-    for alpha in alpha_range:
-        BA_ALPHA = alpha
+    for Fb in FB_range:
+        FB_BETA_SQUARED = Fb*Fb
         Speceficity_total = 0
         recall_total = 0
-        for _ in tqdm(range(reps), desc=f"Repetitions for alpha={alpha}"):
+        for rep in tqdm(range(reps), desc=f"Repetitions for FB={Fb}"):
+            #initializing model and optimizer for each repetition
+            model = BinaryMLP(hidden_dim=256).to(device) if TYPE == "MLP" else BinaryCNN(hidden_dim=256).to(device)
+            optimizer = optim.Adam(model.parameters(), lr=1e-3,weight_decay=1e-5 if WD == True else 0)
+            device    = next(model.parameters()).device
+            # Move loss_fn buffers to the same device as model parameters to avoid per-call copies
+            if LOSS_TYPE == "BinaryLogisticLoss":
+                loss_fn = BinaryLogisticLoss()
+            elif LOSS_TYPE == "BalancedAccuracyLoss":
+                loss_fn = BalancedAccuracyLoss()
+            elif LOSS_TYPE == "FbStyleLoss":
+                loss_fn = FbStyleLoss()
+            else:
+                raise ValueError(f"Unknown loss type: {LOSS_TYPE}")
+            loss_fn.to(device)
+
             for epoch in range(1, epochs + 1):
                 error_distribution = torch.tensor([0]*bits)
                 model.train()
@@ -312,9 +332,21 @@ if __name__ == "__main__":
 
             recall = TP / (TP + FN) if (TP + FN) > 0 else 0.0
             recall_total += recall
-
+            tqdm.write(f"\nrep {rep}: "
+                        f"Fb={Fb}  "
+                        f"recall={recall:.3%}  speceficity={Speceficity:.3%}\n")
         Speceficities.append(Speceficity_total/reps)
         Recalls.append(recall_total/reps)
+
+    import csv
+    os.makedirs("results", exist_ok=True)
+    results_file = os.path.join("results", "FB_metrics.csv")
+    with open(results_file, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["FB", "specificity", "recall"])
+        for a, s, r in zip(FB_range, Speceficities, Recalls):
+            writer.writerow([a, float(s), float(r)])
+    print(f"Saved results to: {results_file}")
 
     # Save trained model using the requested naming convention
 
@@ -334,15 +366,15 @@ if __name__ == "__main__":
     # print(f"Saved full model to: {model_full_path}")
 
     # prepare x axis (try to reconstruct gamma values, otherwise use indices)
-    if len(alpha_range) > 0:
+    if len(FB_range) > 0: #????????????
         try:
-            x = np.array(alpha_range)
-            xlabel = "alpha"
+            x = np.array(FB_range)
+            xlabel = "FB"
         except Exception:
-            x = np.array(alpha_range)
+            x = np.array(FB_range)
             xlabel = "index"
     else:
-        x = np.array(alpha_range)
+        x = np.array(FB_range)
         xlabel = "index"
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
