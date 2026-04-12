@@ -6,7 +6,6 @@
 x_masks = None
 masked_x = None
 y_masks = None
-masked_y = None
 
 def linear_probability(F, in_bits, out_bits = -1):
     """
@@ -39,13 +38,13 @@ def linear_probability(F, in_bits, out_bits = -1):
     global x_masks
     global masked_x
     global y_masks
-    global masked_y
 
     if x_masks is None:
         x_masks = range(n_elem)
         masked_x = [[x&x_mask for x in range(n_elem)] for x_mask in x_masks]
         y_masks = range(1, n_outmasks)
-        masked_y = [[F[x]&y_mask for x in range(n_elem)] for y_mask in y_masks]
+    
+    masked_y = [[F[x]&y_mask for x in range(n_elem)] for y_mask in y_masks]
 
     for x_mask in (x_masks):
         for y_mask in (y_masks):
