@@ -1,4 +1,4 @@
 *.bin filter=lfs diff=lfs merge=lfs -text
 dataset_affine_to_good_sboxes_5_00625LP filter=lfs diff=lfs merge=lfs -text
 dataset_affine_to_good_sboxes_5_0149LP filter=lfs diff=lfs merge=lfs -text
-.pt filter=lfs diff=lfs merge=lfs -text
+*.pt filter=lfs diff=lfs merge=lfs -text
