@@ -110,5 +110,5 @@ class NToNDataset(Dataset):
     
 
 if __name__ == "__main__":
-    dataset = NToNDataset(n_bits=5, size=225_000_000, accepted_WP=0.0625, chunk_size=225_000)
+    dataset = NToNDataset(n_bits=5, size=153_450_000, accepted_WP=0.0625, chunk_size=225_000)
     print(dataset[0])

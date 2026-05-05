@@ -9,8 +9,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-# TYPE = "CNN"
-TYPE = "MLP"
+TYPE = "CNN"
+# TYPE = "MLP"
 
 LOSS_TYPE = "FbStyleLoss"  # Options: "BinaryLogisticLoss", "BalancedAccuracyLoss", "FbStyleLoss"
 
@@ -44,7 +44,7 @@ class BinaryCNN(nn.Module):
         self.conv2 = nn.Conv1d(16, 32, kernel_size=3, padding=1)
         self.act2 = nn.ReLU()
         self.flatten = nn.Flatten()
-        self.fc = nn.Linear(32 * 32, 9)  # 32 channels * 32 length
+        self.fc = nn.Linear(32 * 32, 5)  # 32 channels * 32 length
         self.model_type = "CNN"
 
     def forward(self, x):
@@ -98,28 +98,28 @@ class BinaryMLP(nn.Module):
 
 if __name__ == "__main__":
     
-    filename = "10_Million_samples_LP_DEG_SAC.pt"
+    filename = "dataset_chunks_5bit_153450000size_225000cs_28_04_2026\\chunk_0.pt"
     print("Loading dataset: ", filename)
     dataset = torch.load(filename, weights_only=False, map_location="cpu")
 
-    dataset.data = torch.stack(dataset.data)  # Convert list of tensors to a single tensor
-    dataset.labels = torch.stack(dataset.labels)  # Convert list of tensors to a single tensor
+    # dataset["data"] = torch.stack(dataset["data"])  # Convert list of tensors to a single tensor
+    # dataset["labels"] = torch.stack(dataset["labels"])  # Convert list of tensors to a single tensor
 
-    #dataset.labels = np.delete(dataset.labels, 8, axis=1)  # Remove the first column if it is not needed
-    #dataset.labels = np.delete(dataset.labels, 7, axis=1)  # Remove the first column if it is not needed
-    #dataset.labels = np.delete(dataset.labels, 6, axis=1)  # Remove the first column if it is not needed
-    #dataset.labels = np.delete(dataset.labels, 5, axis=1)  # Remove the first column if it is not needed
-    #dataset.labels = np.delete(dataset.labels, 4, axis=1)  # Remove the first column if it is not needed
-    #dataset.labels = np.delete(dataset.labels, 3, axis=1)  # Remove the first column if it is not needed
-    #dataset.labels = np.delete(dataset.labels, 2, axis=1)  # Remove the first column if it is not needed
-    #dataset.labels = np.delete(dataset.labels, 1, axis=1)  # Remove the first column if it is not needed
+    #dataset["labels"] = np.delete(dataset["labels"], 8, axis=1)  # Remove the first column if it is not needed
+    #dataset["labels"] = np.delete(dataset["labels"], 7, axis=1)  # Remove the first column if it is not needed
+    #dataset["labels"] = np.delete(dataset["labels"], 6, axis=1)  # Remove the first column if it is not needed
+    #dataset["labels"] = np.delete(dataset["labels"], 5, axis=1)  # Remove the first column if it is not needed
+    #dataset["labels"] = np.delete(dataset["labels"], 4, axis=1)  # Remove the first column if it is not needed
+    #dataset["labels"] = np.delete(dataset["labels"], 3, axis=1)  # Remove the first column if it is not needed
+    #dataset["labels"] = np.delete(dataset["labels"], 2, axis=1)  # Remove the first column if it is not needed
+    #dataset["labels"] = np.delete(dataset["labels"], 1, axis=1)  # Remove the first column if it is not needed
 
     transform = transforms.Compose([ToBinaryTensor()])
     # Set your desired train-test ratio (e.g., 0.8 for 80% train, 20% test)
     train_test_ratio = 0.8
     print()
     # Calculate sizes
-    total_size = len(dataset)  # Assuming dataset.data is a tensor of shape (N, C, H, W)
+    total_size = len(dataset)  # Assuming dataset["data"] is a tensor of shape (N, C, H, W)
     train_size = int(total_size * train_test_ratio)
     test_size = total_size - train_size
     print(f"Total samples: {total_size}, Train samples: {train_size}, Test samples: {test_size}")
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     train_dl = DataLoader(train_ds, batch_size=64, shuffle=True)
     test_dl  = DataLoader(test_ds,  batch_size=128)
 
-    bits = dataset.labels.shape[1]
+    bits = dataset["labels"].shape[1]
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Using device:", device)
